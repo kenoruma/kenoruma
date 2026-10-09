@@ -1,4 +1,3 @@
-
 name: Kenomotion iOS Build
 
 on:
@@ -11,19 +10,55 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: List project files
+      - name: Extract project
         run: |
-          find . -maxdepth 4 -type f | sort
+          unzip -o Kenomotion_Native_iOS_Starter.zip -d extracted
+          find extracted -name '*.xcodeproj' -print
 
-      - name: Check ZIP archive
+      - name: Build Kenomotion
         run: |
-          if [ -f Kenomotion_Native_iOS_Starter.zip ]; then
-            unzip -l Kenomotion_Native_iOS_Starter.zip
-          else
-            echo "ZIP file not found at repository root"
+          PROJECT=$(find extracted -name '*.xcodeproj' -print -quit)
+          if [ -z "$PROJECT" ]; then
+            echo "Xcode project not found"
             exit 1
           fi
+
+          SCHEME=$(xcodebuild -list -project "$PROJECT" | sed -n '/Schemes:/,$p' | sed -n '2p' | xargs)
+          if [ -z "$SCHEME" ]; then
+            echo "Xcode scheme not found"
+            exit 1
+          fi
+
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package app
+        run: |
+          APP=$(find build/DerivedData/Build/Products/Debug-iphoneos -maxdepth 1 -name '*.app' -print -quit)
+          if [ -z "$APP" ]; then
+            echo "App build output not found"
+            exit 1
+          fi
+
+          mkdir -p output
+          cd "$(dirname "$APP")"
+          zip -r "$GITHUB_WORKSPACE/output/Kenomotion-App.zip" "$(basename "$APP")"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kenomotion-iOS-Build
+          path: output/Kenomotion-App.zip
+          if-no-files-found: error
