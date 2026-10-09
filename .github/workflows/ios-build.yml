@@ -1,0 +1,29 @@
+
+name: Kenomotion iOS Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - 'Kenomotion_Native_iOS_Starter.zip'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: List project files
+        run: |
+          find . -maxdepth 4 -type f | sort
+
+      - name: Check ZIP archive
+        run: |
+          if [ -f Kenomotion_Native_iOS_Starter.zip ]; then
+            unzip -l Kenomotion_Native_iOS_Starter.zip
+          else
+            echo "ZIP file not found at repository root"
+            exit 1
+          fi
