@@ -1,70 +1,78 @@
 
-name: Kenomotion iOS Build
+name: Build Kenomotion Phase 1 IPA
 
 on:
   workflow_dispatch:
   push:
     paths:
+      - '**.zip'
       - '.github/workflows/ios-build.yml'
-      - 'Kenomotion_Native_iOS_Starter.zip'
 
 jobs:
   build:
     runs-on: macos-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project
+      - name: Find and extract Phase 1 source
         run: |
-          unzip -o Kenomotion_Native_iOS_Starter.zip -d extracted
-          find extracted -name '*.xcodeproj' -print
+          ZIP=$(find . -type f -iname '*Phase1*.zip' | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: ZIP Phase 1 tidak ditemukan di repository"
+            find . -maxdepth 3 -type f
+            exit 1
+          fi
+          echo "Using $ZIP"
+          mkdir -p extracted
+          unzip -o "$ZIP" -d extracted
 
-      - name: Build Kenomotion
+      - name: Find Xcode project
         run: |
-          PROJECT=$(find extracted -name '*.xcodeproj' -print -quit)
-
+          PROJECT=$(find extracted -name '*.xcodeproj' -type d | head -n 1)
           if [ -z "$PROJECT" ]; then
-            echo "Xcode project not found"
+            echo "ERROR: .xcodeproj tidak ditemukan dalam ZIP"
+            find extracted -maxdepth 5 -type f
             exit 1
           fi
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$(dirname "$PROJECT")" >> "$GITHUB_ENV"
+          xcodebuild -list -project "$PROJECT"
 
-          SCHEME=$(xcodebuild -list -project "$PROJECT" | sed -n '/Schemes:/,$p' | sed -n '2p' | xargs)
-
+      - name: Build app
+        run: |
+          SCHEME=$(xcodebuild -list -project "$PROJECT" 2>/dev/null | sed -n '/Schemes:/,$p' | grep -v 'Schemes:' | sed 's/^[[:space:]]*//' | grep -v '^$' | head -n 1)
           if [ -z "$SCHEME" ]; then
-            echo "Xcode scheme not found"
+            echo "ERROR: Scheme Xcode tidak ditemukan"
             exit 1
           fi
-
+          echo "Building scheme: $SCHEME"
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
-            -configuration Debug \
+            -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             build
 
       - name: Package unsigned IPA
         run: |
-          APP=$(find build/DerivedData/Build/Products/Debug-iphoneos -maxdepth 1 -name '*.app' -print -quit)
-
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -n 1)
           if [ -z "$APP" ]; then
-            echo "App build output not found"
+            echo "ERROR: File .app hasil build tidak ditemukan"
             exit 1
           fi
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -r Kenomotion_Phase1_unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent "$APP" Kenomotion_Phase1_app.zip
 
-          mkdir -p output/Payload
-          ditto "$APP" "output/Payload/$(basename "$APP")"
-
-          cd output
-          zip -r Kenomotion-unsigned.ipa Payload
-
-      - name: Upload build artifact
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kenomotion-unsigned-IPA
-          path: output/Kenomotion-unsigned.ipa
+          name: Kenomotion-Phase1-IPA
+          path: |
+            Kenomotion_Phase1_unsigned.ipa
+            Kenomotion_Phase1_app.zip
           if-no-files-found: error
