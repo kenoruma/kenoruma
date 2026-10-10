@@ -1,3 +1,4 @@
+
 name: Kenomotion iOS Build
 
 on:
@@ -23,12 +24,14 @@ jobs:
       - name: Build Kenomotion
         run: |
           PROJECT=$(find extracted -name '*.xcodeproj' -print -quit)
+
           if [ -z "$PROJECT" ]; then
             echo "Xcode project not found"
             exit 1
           fi
 
           SCHEME=$(xcodebuild -list -project "$PROJECT" | sed -n '/Schemes:/,$p' | sed -n '2p' | xargs)
+
           if [ -z "$SCHEME" ]; then
             echo "Xcode scheme not found"
             exit 1
@@ -44,21 +47,24 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Package app
+      - name: Package unsigned IPA
         run: |
           APP=$(find build/DerivedData/Build/Products/Debug-iphoneos -maxdepth 1 -name '*.app' -print -quit)
+
           if [ -z "$APP" ]; then
             echo "App build output not found"
             exit 1
           fi
 
-          mkdir -p output
-          cd "$(dirname "$APP")"
-          zip -r "$GITHUB_WORKSPACE/output/Kenomotion-App.zip" "$(basename "$APP")"
+          mkdir -p output/Payload
+          ditto "$APP" "output/Payload/$(basename "$APP")"
+
+          cd output
+          zip -r Kenomotion-unsigned.ipa Payload
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kenomotion-iOS-Build
-          path: output/Kenomotion-App.zip
+          name: Kenomotion-unsigned-IPA
+          path: output/Kenomotion-unsigned.ipa
           if-no-files-found: error
